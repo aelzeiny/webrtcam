@@ -1,0 +1,17 @@
+[Unit]
+Description=WebRTCam - WebRTC to USB Webcam Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/webrtcam
+ExecStart=/usr/bin/python3 /opt/webrtcam/app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=webrtcam
+
+[Install]
+WantedBy=multi-user.target
