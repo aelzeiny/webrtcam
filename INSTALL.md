@@ -61,7 +61,7 @@ The USB gadget mode is what allows your Raspberry Pi to appear as a USB webcam a
 
 ```bash
 # Run the USB gadget setup script
-sudo /opt/webrtcam/scripts/setup_usb_gadget.sh
+sudo /opt/webrtcam/scripts/setup_usb_gadget_v2.sh
 ```
 
 This script will:
