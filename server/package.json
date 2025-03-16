@@ -1,0 +1,22 @@
+{
+  "name": "webrtcam-server",
+  "version": "1.0.0",
+  "description": "MediaSoup WebRTC one-way media server",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "build-client": "cd ../client && npm run build",
+    "postbuild-client": "mkdir -p public && cp -r ../client/dist/* public/",
+    "setup": "npm run build-client",
+    "full-setup": "npm install && npm run build-client"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mediasoup": "^3.11.12",
+    "socket.io": "^4.6.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

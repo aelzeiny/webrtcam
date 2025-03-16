@@ -1,0 +1,41 @@
+services:
+  webrtcam:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webrtcam
+    ports:
+      # Map port 3000 to host port 8080
+      - "8080:3000"
+      # Map MediaSoup RTC ports
+      - "10000-10100:10000-10100/udp"
+    environment:
+      # Configure environment variables
+      - NODE_ENV=production
+      - PORT=3000
+      # Set mediasoup announced IP to Docker host IP - replace this with your server's public IP in production
+      - MEDIASOUP_ANNOUNCED_IP=127.0.0.1
+    # Ensure the container restarts automatically
+    restart: unless-stopped
+    # Configure for WebRTC - need access to host network for proper RTC connections
+    networks:
+      - webrtc_network
+    # Configure for MediaSoup - need proper system resources
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+    # Add host networking options for WebRTC
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      # Optional: Add persistent storage for logs or other data
+      - webrtcam_logs:/app/logs
+
+networks:
+  webrtc_network:
+    driver: bridge
+
+volumes:
+  webrtcam_logs:
