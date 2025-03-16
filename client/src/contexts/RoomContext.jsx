@@ -1,11 +1,17 @@
-import React, { createContext, useState, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
-import { Device } from 'mediasoup-client';
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { io } from "socket.io-client";
+import { Device } from "mediasoup-client";
 
 export const RoomContext = createContext();
 
 export const RoomProvider = ({ children }) => {
-  const [roomId, setRoomId] = useState('');
+  const [roomId, setRoomId] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isProducing, setIsProducing] = useState(false);
   const [isConsuming, setIsConsuming] = useState(false);
@@ -14,8 +20,8 @@ export const RoomProvider = ({ children }) => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [connectionStats, setConnectionStats] = useState(null);
-  const [selectedVideoQuality, setSelectedVideoQuality] = useState('medium');
-  
+  const [selectedVideoQuality, setSelectedVideoQuality] = useState("medium");
+
   // Refs
   const socketRef = useRef(null);
   const deviceRef = useRef(null);
@@ -24,59 +30,59 @@ export const RoomProvider = ({ children }) => {
   const producersRef = useRef(new Map());
   const consumersRef = useRef(new Map());
   const statsIntervalRef = useRef(null);
-  
+
   // Video quality presets
   const videoQualityProfiles = {
     low: {
       resolution: { width: 640, height: 360 },
       frameRate: 15,
-      bitrate: 500000
+      bitrate: 500000,
     },
     medium: {
       resolution: { width: 1280, height: 720 },
       frameRate: 30,
-      bitrate: 1500000
+      bitrate: 1500000,
     },
     high: {
       resolution: { width: 1920, height: 1080 },
       frameRate: 30,
-      bitrate: 2500000
-    }
+      bitrate: 2500000,
+    },
   };
 
   // Initialize socket connection
   useEffect(() => {
     // Determine the socket.io URL based on environment
     const isDevelopment = import.meta.env.DEV;
-    const socketURL = isDevelopment ? '/' : window.location.origin;
-    
+    const socketURL = isDevelopment ? "/" : window.location.origin;
+
     socketRef.current = io(socketURL, {
-      path: '/socket.io',
+      path: "/socket.io",
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000
+      reconnectionDelayMax: 5000,
     });
 
     // Socket event listeners
-    socketRef.current.on('connect', () => {
-      console.log('Connected to signaling server');
+    socketRef.current.on("connect", () => {
+      console.log("Connected to signaling server");
     });
 
-    socketRef.current.on('disconnect', () => {
-      console.log('Disconnected from signaling server');
+    socketRef.current.on("disconnect", () => {
+      console.log("Disconnected from signaling server");
       setIsConnected(false);
       cleanup();
     });
 
-    socketRef.current.on('connect_error', (err) => {
-      console.error('Connection error:', err);
+    socketRef.current.on("connect_error", (err) => {
+      console.error("Connection error:", err);
       setError(`Connection error: ${err.message}`);
     });
 
-    socketRef.current.on('consumerClosed', ({ consumerId }) => {
-      console.log('Consumer closed:', consumerId);
+    socketRef.current.on("consumerClosed", ({ consumerId }) => {
+      console.log("Consumer closed:", consumerId);
       if (consumersRef.current.has(consumerId)) {
         const consumer = consumersRef.current.get(consumerId);
         consumer.close();
@@ -95,37 +101,44 @@ export const RoomProvider = ({ children }) => {
       }
     };
   }, []);
-  
+
   // Set up the producer event listener separately so it can use the current isConsuming state
   useEffect(() => {
     if (!socketRef.current) return;
-    
+
     // Clear previous listener
-    socketRef.current.off('newProducer');
-    
+    socketRef.current.off("newProducer");
+
     // Add new listener with current isConsuming state
-    socketRef.current.on('newProducer', ({ producerId, producerSocketId, kind }) => {
-      console.log(`New ${kind} producer available:`, producerId);
-      console.log(`Current consuming state: ${isConsuming}`);
-      
-      if (isConsuming) {
-        console.log(`Starting to consume producer: ${producerId}, kind: ${kind}`);
-        // Automatically consume the new producer
-        consumeProducer(producerId, kind);
-      } else {
-        console.log('Not consuming this producer because isConsuming is false');
+    socketRef.current.on(
+      "newProducer",
+      ({ producerId, producerSocketId, kind }) => {
+        console.log(`New ${kind} producer available:`, producerId);
+        console.log(`Current consuming state: ${isConsuming}`);
+
+        if (isConsuming) {
+          console.log(
+            `Starting to consume producer: ${producerId}, kind: ${kind}`
+          );
+          // Automatically consume the new producer
+          consumeProducer(producerId, kind);
+        } else {
+          console.log(
+            "Not consuming this producer because isConsuming is false"
+          );
+        }
       }
-    });
-    
+    );
+
     // When we first start consuming, we need to check for any existing producers in the room
     if (isConsuming && roomId) {
-      console.log('Started consuming - checking for existing producers');
+      console.log("Started consuming - checking for existing producers");
       checkExistingProducers();
     }
-    
+
     return () => {
       if (socketRef.current) {
-        socketRef.current.off('newProducer');
+        socketRef.current.off("newProducer");
       }
     };
   }, [isConsuming, roomId]);
@@ -134,72 +147,88 @@ export const RoomProvider = ({ children }) => {
   const checkExistingProducers = async () => {
     try {
       if (!socketRef.current || !roomId) return;
-      
-      console.log('Checking for existing producers in room:', roomId);
-      socketRef.current.emit('getProducers', { roomId }, async (response) => {
-        if (response.status === 'success') {
+
+      console.log("Checking for existing producers in room:", roomId);
+      socketRef.current.emit("getProducers", { roomId }, async (response) => {
+        if (response.status === "success") {
           const { producers } = response;
-          console.log('Existing producers found:', producers);
-          
+          console.log("Existing producers found:", producers);
+
           // Consume each existing producer
           for (const producer of producers) {
             await consumeProducer(producer.id, producer.kind);
           }
         } else {
-          console.error('Failed to get producers:', response.message);
+          console.error("Failed to get producers:", response.message);
         }
       });
     } catch (error) {
-      console.error('Error checking existing producers:', error);
+      console.error("Error checking existing producers:", error);
     }
   };
 
   // Fetch available sessions from the API
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
       // Use the same origin in production, or the proxied path in development
-      const apiPath = '/api/sessions';
+      const apiPath = "/api/sessions";
       const response = await fetch(apiPath);
       const sessions = await response.json();
       setAvailableSessions(sessions);
     } catch (error) {
-      console.error('Error fetching sessions:', error);
+      console.error("Error fetching sessions:", error);
       setError(`Error fetching sessions: ${error.message}`);
     }
-  };
+  }, []);
+
+  // Set up a periodic fetch of sessions every 5 seconds
+  useEffect(() => {
+    // Fetch immediately on component mount
+    fetchSessions();
+    
+    // Set up the interval
+    const intervalId = setInterval(() => {
+      fetchSessions();
+    }, 5000);
+    
+    // Clean up on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [fetchSessions]);
 
   // Create or join a room
   const joinRoom = async (roomIdToJoin) => {
     try {
       if (!roomIdToJoin) {
-        throw new Error('Room ID is required');
+        throw new Error("Room ID is required");
       }
 
       if (!socketRef.current || !socketRef.current.connected) {
-        throw new Error('Not connected to signaling server');
+        throw new Error("Not connected to signaling server");
       }
 
       // Join the room via socket.io
       const response = await new Promise((resolve, reject) => {
-        socketRef.current.emit('joinRoom', { roomId: roomIdToJoin }, (res) => {
-          if (res.status === 'success') {
+        socketRef.current.emit("joinRoom", { roomId: roomIdToJoin }, (res) => {
+          if (res.status === "success") {
             resolve(res);
           } else {
-            reject(new Error(res.message || 'Failed to join room'));
+            reject(new Error(res.message || "Failed to join room"));
           }
         });
       });
 
-      console.log('Joined room:', response);
+      console.log("Joined room:", response);
       setRoomId(roomIdToJoin);
       setIsConnected(true);
-      
+
       // Initialize the MediaSoup device
       await initializeDevice(roomIdToJoin);
 
       return true;
     } catch (error) {
-      console.error('Error joining room:', error);
+      console.error("Error joining room:", error);
       setError(`Error joining room: ${error.message}`);
       return false;
     }
@@ -214,22 +243,28 @@ export const RoomProvider = ({ children }) => {
 
       // Get router RTP capabilities
       const rtpCapabilitiesResponse = await new Promise((resolve, reject) => {
-        socketRef.current.emit('getRouterRtpCapabilities', { roomId }, (res) => {
-          if (res.status === 'success') {
-            resolve(res.rtpCapabilities);
-          } else {
-            reject(new Error(res.message || 'Failed to get RTP capabilities'));
+        socketRef.current.emit(
+          "getRouterRtpCapabilities",
+          { roomId },
+          (res) => {
+            if (res.status === "success") {
+              resolve(res.rtpCapabilities);
+            } else {
+              reject(
+                new Error(res.message || "Failed to get RTP capabilities")
+              );
+            }
           }
-        });
+        );
       });
 
       // Load the device with router's RTP capabilities
       await device.load({ routerRtpCapabilities: rtpCapabilitiesResponse });
-      console.log('Device loaded');
+      console.log("Device loaded");
 
       return device;
     } catch (error) {
-      console.error('Error initializing device:', error);
+      console.error("Error initializing device:", error);
       setError(`Error initializing device: ${error.message}`);
       throw error;
     }
@@ -239,12 +274,15 @@ export const RoomProvider = ({ children }) => {
   const startProducing = async () => {
     try {
       if (!isConnected || !deviceRef.current || !deviceRef.current.loaded) {
-        throw new Error('Not connected to a room');
+        throw new Error("Not connected to a room");
       }
 
       // Check if the device can produce the media types we need
-      if (!deviceRef.current.canProduce('audio') || !deviceRef.current.canProduce('video')) {
-        throw new Error('Device cannot produce media');
+      if (
+        !deviceRef.current.canProduce("audio") ||
+        !deviceRef.current.canProduce("video")
+      ) {
+        throw new Error("Device cannot produce media");
       }
 
       // Get user media based on selected quality
@@ -254,19 +292,21 @@ export const RoomProvider = ({ children }) => {
         video: {
           width: { ideal: quality.resolution.width },
           height: { ideal: quality.resolution.height },
-          frameRate: { ideal: quality.frameRate }
-        }
+          frameRate: { ideal: quality.frameRate },
+        },
       });
 
       setLocalStream(stream);
 
       // Create a producer transport
       const transportResponse = await new Promise((resolve, reject) => {
-        socketRef.current.emit('createProducerTransport', { roomId }, (res) => {
-          if (res.status === 'success') {
+        socketRef.current.emit("createProducerTransport", { roomId }, (res) => {
+          if (res.status === "success") {
             resolve(res);
           } else {
-            reject(new Error(res.message || 'Failed to create producer transport'));
+            reject(
+              new Error(res.message || "Failed to create producer transport")
+            );
           }
         });
       });
@@ -277,29 +317,37 @@ export const RoomProvider = ({ children }) => {
         iceCandidates: transportResponse.iceCandidates,
         dtlsParameters: transportResponse.dtlsParameters,
         iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun3.l.google.com:19302" },
+          { urls: "stun:stun4.l.google.com:19302" },
         ],
       });
 
       // Handle transport connection
-      transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+      transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
           await new Promise((resolve, reject) => {
-            socketRef.current.emit('connectProducerTransport', {
-              roomId,
-              transportId: transport.id,
-              dtlsParameters
-            }, (res) => {
-              if (res.status === 'success') {
-                resolve();
-              } else {
-                reject(new Error(res.message || 'Failed to connect producer transport'));
+            socketRef.current.emit(
+              "connectProducerTransport",
+              {
+                roomId,
+                transportId: transport.id,
+                dtlsParameters,
+              },
+              (res) => {
+                if (res.status === "success") {
+                  resolve();
+                } else {
+                  reject(
+                    new Error(
+                      res.message || "Failed to connect producer transport"
+                    )
+                  );
+                }
               }
-            });
+            );
           });
           callback();
         } catch (error) {
@@ -308,28 +356,35 @@ export const RoomProvider = ({ children }) => {
       });
 
       // Handle produce event
-      transport.on('produce', async ({ kind, rtpParameters, appData }, callback, errback) => {
-        try {
-          const { id } = await new Promise((resolve, reject) => {
-            socketRef.current.emit('produce', {
-              roomId,
-              transportId: transport.id,
-              kind,
-              rtpParameters,
-              appData
-            }, (res) => {
-              if (res.status === 'success') {
-                resolve({ id: res.id });
-              } else {
-                reject(new Error(res.message || 'Failed to produce'));
-              }
+      transport.on(
+        "produce",
+        async ({ kind, rtpParameters, appData }, callback, errback) => {
+          try {
+            const { id } = await new Promise((resolve, reject) => {
+              socketRef.current.emit(
+                "produce",
+                {
+                  roomId,
+                  transportId: transport.id,
+                  kind,
+                  rtpParameters,
+                  appData,
+                },
+                (res) => {
+                  if (res.status === "success") {
+                    resolve({ id: res.id });
+                  } else {
+                    reject(new Error(res.message || "Failed to produce"));
+                  }
+                }
+              );
             });
-          });
-          callback({ id });
-        } catch (error) {
-          errback(error);
+            callback({ id });
+          } catch (error) {
+            errback(error);
+          }
         }
-      });
+      );
 
       producerTransportRef.current = transport;
 
@@ -342,9 +397,9 @@ export const RoomProvider = ({ children }) => {
             opusStereo: true,
             opusDtx: true,
           },
-          appData: { mediaType: 'audio' }
+          appData: { mediaType: "audio" },
         });
-        producersRef.current.set('audio', audioProducer);
+        producersRef.current.set("audio", audioProducer);
       }
 
       // Produce video
@@ -355,21 +410,21 @@ export const RoomProvider = ({ children }) => {
           encodings: [
             {
               maxBitrate: quality.bitrate,
-              maxFramerate: quality.frameRate
-            }
+              maxFramerate: quality.frameRate,
+            },
           ],
           codecOptions: {
-            videoGoogleStartBitrate: 1000
+            videoGoogleStartBitrate: 1000,
           },
-          appData: { mediaType: 'video' }
+          appData: { mediaType: "video" },
         });
-        producersRef.current.set('video', videoProducer);
+        producersRef.current.set("video", videoProducer);
       }
 
       setIsProducing(true);
       return true;
     } catch (error) {
-      console.error('Error starting producer:', error);
+      console.error("Error starting producer:", error);
       setError(`Error starting producer: ${error.message}`);
       return false;
     }
@@ -392,13 +447,13 @@ export const RoomProvider = ({ children }) => {
 
       // Stop local stream tracks
       if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+        localStream.getTracks().forEach((track) => track.stop());
         setLocalStream(null);
       }
 
       setIsProducing(false);
     } catch (error) {
-      console.error('Error stopping producer:', error);
+      console.error("Error stopping producer:", error);
       setError(`Error stopping producer: ${error.message}`);
     }
   };
@@ -407,7 +462,7 @@ export const RoomProvider = ({ children }) => {
   const startConsuming = async () => {
     try {
       if (!isConnected || !deviceRef.current || !deviceRef.current.loaded) {
-        throw new Error('Not connected to a room');
+        throw new Error("Not connected to a room");
       }
 
       // In mediasoup-client, a device can consume if it's loaded and has RTP capabilities
@@ -415,11 +470,13 @@ export const RoomProvider = ({ children }) => {
 
       // Create a consumer transport
       const transportResponse = await new Promise((resolve, reject) => {
-        socketRef.current.emit('createConsumerTransport', { roomId }, (res) => {
-          if (res.status === 'success') {
+        socketRef.current.emit("createConsumerTransport", { roomId }, (res) => {
+          if (res.status === "success") {
             resolve(res);
           } else {
-            reject(new Error(res.message || 'Failed to create consumer transport'));
+            reject(
+              new Error(res.message || "Failed to create consumer transport")
+            );
           }
         });
       });
@@ -430,29 +487,37 @@ export const RoomProvider = ({ children }) => {
         iceCandidates: transportResponse.iceCandidates,
         dtlsParameters: transportResponse.dtlsParameters,
         iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun3.l.google.com:19302" },
+          { urls: "stun:stun4.l.google.com:19302" },
         ],
       });
 
       // Handle transport connection
-      transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+      transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
           await new Promise((resolve, reject) => {
-            socketRef.current.emit('connectConsumerTransport', {
-              roomId,
-              transportId: transport.id,
-              dtlsParameters
-            }, (res) => {
-              if (res.status === 'success') {
-                resolve();
-              } else {
-                reject(new Error(res.message || 'Failed to connect consumer transport'));
+            socketRef.current.emit(
+              "connectConsumerTransport",
+              {
+                roomId,
+                transportId: transport.id,
+                dtlsParameters,
+              },
+              (res) => {
+                if (res.status === "success") {
+                  resolve();
+                } else {
+                  reject(
+                    new Error(
+                      res.message || "Failed to connect consumer transport"
+                    )
+                  );
+                }
               }
-            });
+            );
           });
           callback();
         } catch (error) {
@@ -471,7 +536,7 @@ export const RoomProvider = ({ children }) => {
 
       return true;
     } catch (error) {
-      console.error('Error starting consumer:', error);
+      console.error("Error starting consumer:", error);
       setError(`Error starting consumer: ${error.message}`);
       return false;
     }
@@ -481,27 +546,33 @@ export const RoomProvider = ({ children }) => {
   const consumeProducer = async (producerId, kind) => {
     try {
       if (!consumerTransportRef.current || !deviceRef.current) {
-        throw new Error('Consumer transport not created');
+        throw new Error("Consumer transport not created");
       }
 
-      console.log(`Attempting to consume producer ${producerId} of kind ${kind}`);
-      
+      console.log(
+        `Attempting to consume producer ${producerId} of kind ${kind}`
+      );
+
       // Consume the producer
       const { rtpCapabilities } = deviceRef.current;
-      
+
       const consumerResponse = await new Promise((resolve, reject) => {
-        socketRef.current.emit('consume', {
-          roomId,
-          transportId: consumerTransportRef.current.id,
-          producerId,
-          rtpCapabilities
-        }, (res) => {
-          if (res.status === 'success') {
-            resolve(res);
-          } else {
-            reject(new Error(res.message || 'Failed to consume'));
+        socketRef.current.emit(
+          "consume",
+          {
+            roomId,
+            transportId: consumerTransportRef.current.id,
+            producerId,
+            rtpCapabilities,
+          },
+          (res) => {
+            if (res.status === "success") {
+              resolve(res);
+            } else {
+              reject(new Error(res.message || "Failed to consume"));
+            }
           }
-        });
+        );
       });
 
       // Create a consumer
@@ -509,30 +580,34 @@ export const RoomProvider = ({ children }) => {
         id: consumerResponse.id,
         producerId: consumerResponse.producerId,
         kind: consumerResponse.kind,
-        rtpParameters: consumerResponse.rtpParameters
+        rtpParameters: consumerResponse.rtpParameters,
       });
 
       consumersRef.current.set(consumer.id, consumer);
 
       // Resume the consumer
       await new Promise((resolve, reject) => {
-        socketRef.current.emit('resumeConsumer', {
-          roomId,
-          consumerId: consumer.id
-        }, (res) => {
-          if (res.status === 'success') {
-            resolve();
-          } else {
-            reject(new Error(res.message || 'Failed to resume consumer'));
+        socketRef.current.emit(
+          "resumeConsumer",
+          {
+            roomId,
+            consumerId: consumer.id,
+          },
+          (res) => {
+            if (res.status === "success") {
+              resolve();
+            } else {
+              reject(new Error(res.message || "Failed to resume consumer"));
+            }
           }
-        });
+        );
       });
 
       // Create a new MediaStream
       const stream = new MediaStream([consumer.track]);
-      
-      if (kind === 'video') {
-        setRemoteStream(prev => {
+
+      if (kind === "video") {
+        setRemoteStream((prev) => {
           // If there's an existing stream, add the track to it
           if (prev) {
             const audioTrack = prev.getAudioTracks()[0];
@@ -542,8 +617,8 @@ export const RoomProvider = ({ children }) => {
           }
           return stream;
         });
-      } else if (kind === 'audio') {
-        setRemoteStream(prev => {
+      } else if (kind === "audio") {
+        setRemoteStream((prev) => {
           // If there's an existing stream, add the track to it
           if (prev) {
             const videoTrack = prev.getVideoTracks()[0];
@@ -586,7 +661,7 @@ export const RoomProvider = ({ children }) => {
         statsIntervalRef.current = null;
       }
     } catch (error) {
-      console.error('Error stopping consumer:', error);
+      console.error("Error stopping consumer:", error);
       setError(`Error stopping consumer: ${error.message}`);
     }
   };
@@ -598,12 +673,13 @@ export const RoomProvider = ({ children }) => {
         return;
       }
 
-      const videoConsumer = Array.from(consumersRef.current.values())
-        .find(consumer => consumer.kind === 'video');
-      
+      const videoConsumer = Array.from(consumersRef.current.values()).find(
+        (consumer) => consumer.kind === "video"
+      );
+
       if (videoConsumer) {
         const stats = await videoConsumer.getStats();
-        
+
         let totalBytesReceived = 0;
         let framesDecoded = 0;
         let packetsLost = 0;
@@ -613,7 +689,7 @@ export const RoomProvider = ({ children }) => {
         let frameRate = 0;
 
         for (const stat of stats.values()) {
-          if (stat.type === 'inbound-rtp') {
+          if (stat.type === "inbound-rtp") {
             totalBytesReceived = stat.bytesReceived;
             framesDecoded = stat.framesDecoded;
             packetsLost = stat.packetsLost;
@@ -632,11 +708,11 @@ export const RoomProvider = ({ children }) => {
           packetsLost,
           jitter,
           resolution: `${frameWidth}x${frameHeight}`,
-          frameRate
+          frameRate,
         });
       }
     } catch (error) {
-      console.error('Error getting stats:', error);
+      console.error("Error getting stats:", error);
     }
   };
 
@@ -647,7 +723,7 @@ export const RoomProvider = ({ children }) => {
     stopConsuming();
 
     // Reset state
-    setRoomId('');
+    setRoomId("");
     setIsConnected(false);
     setError(null);
 
@@ -659,14 +735,14 @@ export const RoomProvider = ({ children }) => {
   const cleanup = () => {
     stopProducing();
     stopConsuming();
-    
+
     // Clear all refs
     deviceRef.current = null;
     producerTransportRef.current = null;
     consumerTransportRef.current = null;
     producersRef.current.clear();
     consumersRef.current.clear();
-    
+
     // Clear intervals
     if (statsIntervalRef.current) {
       clearInterval(statsIntervalRef.current);
@@ -694,7 +770,7 @@ export const RoomProvider = ({ children }) => {
         stopProducing,
         startConsuming,
         stopConsuming,
-        fetchSessions
+        fetchSessions,
       }}
     >
       {children}
